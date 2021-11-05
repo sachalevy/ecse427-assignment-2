@@ -21,11 +21,12 @@ void hello2() {
 
 int main() {
   sut_init();
-  bool t1 = sut_create(hello1);
-  if (t1 == false)
+  printf("heya");
+  //bool t1 = sut_create(hello1);
+  /*if (t1 == false)
     printf("Error: sut_create(hello1) failed\n");
   bool t2 = sut_create(hello2);
   if (t2 == false)
     printf("Error: sut_create(hello2) failed\n");
-  sut_shutdown();
+  sut_shutdown();*/
 }

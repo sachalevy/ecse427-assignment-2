@@ -5,45 +5,44 @@
 #include <stdbool.h>
 #include <pthread.h>
 
-// project-specific libs
-#include "other/queue/queue.h"
 #include "sut.h"
+#include "queue.h"
 
-// managing current state of threads
 threadDescriptor thread_array[MAX_THREADS];
 int thread_count, current_thread;
 ucontext_t parent;
 
-// global queues for allocating threads, tasks, and i/o
 struct queue task_queue, io_queue, tid_queue;
 
 // example for pthread at https://www.ibm.com/docs/en/zos/2.3.0?topic=functions-pthread-create-create-thread
-void task_executor() {
-	// continuously check for new tasks to execute within the task queue
+void *task_executor(void *arg) {
+	bool is_parent = true;
+	printf("starting task executor");
 	while (true) {
-		// check if there is a task in the queue
+		// currently running task, to be queued in the back
 		struct queue_entry *current_thread_ptr = queue_pop_head(&task_queue);
-		if current_thread_ptr {
-			
-
-			// check if current running thread is the parent
-			if (thread_count == 1) {
-				// -> should we getcontext or swap context here?
-				// swap context between the parent thread, and current thread
-				swapcontext(&parent, &(thread_array[(*(int*)current_thread_ptr->data)].thread_context))
-
-			} else {
-				// swap context between next thread and current thread
-				struct queue_entry *current_thread_ptr = queue_peek_front(&task_queue);
-				// queue current thread in the back of the queue
+		printf("hey from ze eeuctor");
+		if (current_thread_ptr && is_parent) {
+			// switch from parent to task context
+			swapcontext(&parent, &(thread_array[(*(int*)current_thread_ptr->data)].thread_context));
+			queue_insert_tail(&task_queue, current_thread_ptr);
+			is_parent = false;
+		} else if (current_thread_ptr && !is_parent && thread_count > 1) {
+			// switch from current to next task context
+			struct queue_entry *next_thread_ptr = queue_peek_front(&task_queue);
+			if (next_thread_ptr) {
+				// if no next tasks, keep executing current task
+				swapcontext(&(thread_array[(*(int*)current_thread_ptr->data)].thread_context), &(thread_array[(*(int*)next_thread_ptr->data)].thread_context));
 			}
+			queue_insert_tail(&task_queue, current_thread_ptr);
 		} else {
-			nanosleep();
+			// ref for usage of nanosleep: https://stackoverflow.com/a/7684399
+			nanosleep((const struct timespec[]){{0, 500000000L}}, NULL);
 		}
 	}
 }
 
-void io_executor() {
+void *io_executor(void *arg) {
 	/**char *io_ret;
 	printf("thread() entered with argument '%s'\n", arg);
 	if ((ret = (char*) malloc(20)) == NULL) {
@@ -52,15 +51,14 @@ void io_executor() {
 	}
 	strcpy(ret, "This is a test");
 
-	pthread_exit(ret);*/	
+	pthread_exit(ret);*/
 }
 
 
 void sut_init() {
 	thread_count = 0;
 	current_thread = 0;
-	
-	// create and init each task and io queue
+
 	task_queue = queue_create();
 	queue_init(&task_queue);
 	io_queue = queue_create();
@@ -68,74 +66,61 @@ void sut_init() {
 	tid_queue = queue_create();
 	queue_init(&tid_queue);
 
-	// load the thread allocation ids
 	for (int i = 0; i < MAX_THREADS; i++) {
-		// TODO: make sure the same int address does not keep being allocated
-		// over and over again, simply changing the value of the loop
 		int j = i;
 		struct queue_entry *allocatable_tid = queue_new_node(&j);
 		queue_insert_tail(&tid_queue, allocatable_tid);
 	}
 
-	// init two worker thread able to manage the wait queue and the task queue
 	pthread_t thid_task_exec, thid_io_exec;
-  	void *io_ret, *task_ret;
+	void *io_ret, *task_ret;
 
-  	// create task executor thread
-	if (pthread_create(thid_task_exec, NULL, task_executor, NULL) != 0) {
+	printf("Initializing task and IO threads.");
+
+	if (pthread_create(&thid_task_exec, NULL, task_executor, NULL) != 0) {
 		perror("Error creating the task executor thread.");
 		exit(1);
 	}
 
-	// create io thread executor
-	if (pthread_create(thid_io_exec, NULL, io_executor, NULL) != 0) {
-		perror("Error creating the io executor thread.");
-		exit(1);
-	}
+	pthread_join(thid_task_exec, NULL);
 
-	//if ((pthread_join(thid_task_exec, &task_ret) != 0) || (pthread_join(thid_io_exec, &io_ret) != 0)) {
-	//	perror("Error while joining executor threads.");
-	//	exit(3);
+	//if (pthread_create(&thid_io_exec, NULL, io_executor, NULL) != 0) {
+	//	perror("Error creating the io executor thread.");
+	//	exit(1);
 	//}
 
-	printf("Executors successfully exited.");
+	/*if ((pthread_join(thid_task_exec, &task_ret) != 0) || (pthread_join(thid_io_exec, &io_ret) != 0)) {
+		perror("Error while joining executor threads.");
+		exit(3);
+	}*/
 }
 
-//TODO: check if library task definition fits the prototype
-bool sut_create(void (sut_task_f)()) {
+bool sut_create(sut_task_f sut_task) {
+	printf("creating task");
+	threadDescriptor *thread_descriptor;
 
-	// retrieve next allocatable lib thread id from queue
 	struct queue_entry *thread_id = queue_pop_head(&tid_queue);
+	printf("got threa id %d",*(int*)thread_id->data );
 	if (!thread_id) {
 		printf("Error: active thread limit was reached.\n");
 		return false;
 	}
 
-	// get next thread descriptor in array of available thread descriptors
-	thread_descriptor = &(thread_array[(*(int*)thread_id->data)]);
-	// retrieve current context for thread
+	// init thread descriptor for task
+	thread_descriptor = &(thread_array[*(int*)thread_id->data]);
 	getcontext(&(thread_descriptor->thread_context));
-	// update the thread's id
-	thread_descriptor->thread_id = (*(int*)thread_id->data);
-	// allocate stack to thread
+	thread_descriptor->thread_id = *(int*)thread_id->data;
 	thread_descriptor->thread_stack = (char *)malloc(THREAD_STACK_SIZE);
-	// set stack pointer to allocated stack
 	thread_descriptor->thread_context.uc_stack.ss_sp = thread_descriptor->thread_stack;
-	// set size of allocated stack for thread
 	thread_descriptor->thread_context.uc_stack.ss_size = THREAD_STACK_SIZE;
 	thread_descriptor->thread_context.uc_link = 0;
 	thread_descriptor->thread_context.uc_stack.ss_flags = 0;
-	// set thread function to be executed (which implements sut API calls)
-	thread_descriptor->thread_func = sut_task_f;
+	thread_descriptor->thread_func = sut_task;
 
-	// make this thread's context based on newly built thread descriptor
-	makecontext(&(thread_descriptor->thread_context), sut_task_f, 1, thread_descriptor);
+	makecontext(&(thread_descriptor->thread_context), sut_task, 1, thread_descriptor);
 
-	/*****TODO: implement queuing thread to task queue***/
-	// append thread descriptor to task queue
-	struct queue_entry *task_thread_id = queue_new_node(&(thread_descriptor.thread_id))
+	struct queue_entry *task_thread_id = queue_new_node(&thread_descriptor);
 	queue_insert_tail(&task_queue, task_thread_id);
-	/***END IMPLEMENTATION OF RUNNING TASK QUEUES.**/
 
 	thread_count++;
 
