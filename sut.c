@@ -8,56 +8,88 @@
 #include "sut.h"
 #include "queue.h"
 
+int yield;
+
 threadDescriptor thread_array[MAX_THREADS];
-int thread_count, current_thread;
+int thread_count, current_thread, current_thread_id;
 ucontext_t parent;
 
 struct queue task_queue, io_queue, tid_queue;
 
-// example for pthread at https://www.ibm.com/docs/en/zos/2.3.0?topic=functions-pthread-create-create-thread
 void *task_executor(void *arg) {
-	bool is_parent = true;
-	printf("starting task executor");
+	bool is_running = false;
 	while (true) {
-		// currently running task, to be queued in the back
 		struct queue_entry *current_thread_ptr = queue_pop_head(&task_queue);
-		printf("hey from ze eeuctor");
-		if (current_thread_ptr && is_parent) {
-			// switch from parent to task context
-			swapcontext(&parent, &(thread_array[(*(int*)current_thread_ptr->data)].thread_context));
+		if (!is_running && current_thread_ptr) {
+			printf("Found a thread to run\n");
+			swapcontext(&parent,  &(thread_array[0].thread_context));
 			queue_insert_tail(&task_queue, current_thread_ptr);
-			is_parent = false;
-		} else if (current_thread_ptr && !is_parent && thread_count > 1) {
-			// switch from current to next task context
-			struct queue_entry *next_thread_ptr = queue_peek_front(&task_queue);
-			if (next_thread_ptr) {
-				// if no next tasks, keep executing current task
-				swapcontext(&(thread_array[(*(int*)current_thread_ptr->data)].thread_context), &(thread_array[(*(int*)next_thread_ptr->data)].thread_context));
-			}
-			queue_insert_tail(&task_queue, current_thread_ptr);
+			is_running = true;
 		} else {
+			nanosleep((const struct timespec[]){{0, 500000000L}}, NULL);
+		}
+	}
+}
+
+// example for pthread at https://www.ibm.com/docs/en/zos/2.3.0?topic=functions-pthread-create-create-thread
+void *_task_executor(void *arg) {
+	bool is_parent = true;
+	printf("Starting task executor.\n");
+
+	while (true) {
+
+		if (yield) {
+			printf("Running a yield operation.\n");
+			// currently running task, to be queued in the back
+			struct queue_entry *current_thread_ptr = queue_pop_head(&task_queue);
+			swapcontext(&parent,
+				&((*(threadDescriptor*)current_thread_ptr->data).thread_context));
+			queue_insert_tail(&task_queue, current_thread_ptr);
+
+			if (current_thread_ptr && is_parent) {
+				// switch from parent to task context
+				printf("hello from here");
+				swapcontext(&parent,
+					&((*(threadDescriptor*)current_thread_ptr->data).thread_context));
+				queue_insert_tail(&task_queue, current_thread_ptr);
+				is_parent = false;
+				printf("successfully switched to the task to be executed\n");
+			} else if (current_thread_ptr && !is_parent && thread_count > 1) {
+				printf("hello from there");
+				// switch from current to next task context
+				struct queue_entry *next_thread_ptr = queue_peek_front(&task_queue);
+				if (next_thread_ptr) {
+					// if no next tasks, keep executing current task
+					swapcontext(&((*(threadDescriptor*)current_thread_ptr->data).thread_context),
+						&((*(threadDescriptor*)next_thread_ptr->data).thread_context));
+				}
+				queue_insert_tail(&task_queue, current_thread_ptr);
+			} else {
+				printf("did not find anyone\n");
+			}
+		}
+		else {
 			// ref for usage of nanosleep: https://stackoverflow.com/a/7684399
 			nanosleep((const struct timespec[]){{0, 500000000L}}, NULL);
 		}
 	}
 }
 
-void *io_executor(void *arg) {
-	/**char *io_ret;
-	printf("thread() entered with argument '%s'\n", arg);
-	if ((ret = (char*) malloc(20)) == NULL) {
-		perror("malloc() error");
-		exit(2);
-	}
-	strcpy(ret, "This is a test");
-
-	pthread_exit(ret);*/
-}
+/*
+- init threading library (2 threads running for I/O and tasks)
+(want to dynamically allocate threads from the thread array)
+(handle switches between threads from the C-exec pthread)
+- create a new task
+(add thread descriptor to task queue)
+(set signal on thread to handle expiry -> variable set directl when running sut_yield)
+(sut_yield activates signal to running thread which makes it yield to the next thread)
+*/
 
 
-void sut_init() {
+bool sut_init() {
 	thread_count = 0;
 	current_thread = 0;
+	current_thread_id = 0;
 
 	task_queue = queue_create();
 	queue_init(&task_queue);
@@ -66,23 +98,30 @@ void sut_init() {
 	tid_queue = queue_create();
 	queue_init(&tid_queue);
 
+	// add one node for debugging
+	//int i = 0;
+	//struct queue_entry *allocatable_tid = queue_new_node(&i);
+	//queue_insert_tail(&tid_queue, allocatable_tid);
+
+	// organise distribution of thread ids
+	/*
+	struct queue_entry *allocatable_tid;
 	for (int i = 0; i < MAX_THREADS; i++) {
-		int j = i;
-		struct queue_entry *allocatable_tid = queue_new_node(&j);
+		allocatable_tid = queue_new_node(&i);
 		queue_insert_tail(&tid_queue, allocatable_tid);
+		printf("Adding new thread id %d.\n", *(int*)allocatable_tid->data);
 	}
+	*/
 
 	pthread_t thid_task_exec, thid_io_exec;
 	void *io_ret, *task_ret;
 
-	printf("Initializing task and IO threads.");
-
 	if (pthread_create(&thid_task_exec, NULL, task_executor, NULL) != 0) {
-		perror("Error creating the task executor thread.");
+		perror("Error creating the task executor thread.\n");
 		exit(1);
 	}
 
-	pthread_join(thid_task_exec, NULL);
+	//pthread_join(thid_task_exec, NULL);
 
 	//if (pthread_create(&thid_io_exec, NULL, io_executor, NULL) != 0) {
 	//	perror("Error creating the io executor thread.");
@@ -93,23 +132,29 @@ void sut_init() {
 		perror("Error while joining executor threads.");
 		exit(3);
 	}*/
+	return true;
 }
 
 bool sut_create(sut_task_f sut_task) {
-	printf("creating task");
-	threadDescriptor *thread_descriptor;
-
-	struct queue_entry *thread_id = queue_pop_head(&tid_queue);
-	printf("got threa id %d",*(int*)thread_id->data );
-	if (!thread_id) {
+	/*struct queue_entry *thread_id_ptr = queue_pop_head(&tid_queue);
+	if (!thread_id_ptr) {
 		printf("Error: active thread limit was reached.\n");
 		return false;
 	}
 
+	current_thread_id = (*(int*)thread_id_ptr->data);
+	printf("Assigning thread id %d.\n", current_thread_id);
+	*/
+	if (thread_count > MAX_THREADS) {
+		return false;
+	}
+
 	// init thread descriptor for task
-	thread_descriptor = &(thread_array[*(int*)thread_id->data]);
+	threadDescriptor *thread_descriptor;
+	//thread_descriptor = &(thread_array[*(int*)thread_id->data]);
+	thread_descriptor = &(thread_array[thread_count]);
 	getcontext(&(thread_descriptor->thread_context));
-	thread_descriptor->thread_id = *(int*)thread_id->data;
+	thread_descriptor->thread_id = thread_count;
 	thread_descriptor->thread_stack = (char *)malloc(THREAD_STACK_SIZE);
 	thread_descriptor->thread_context.uc_stack.ss_sp = thread_descriptor->thread_stack;
 	thread_descriptor->thread_context.uc_stack.ss_size = THREAD_STACK_SIZE;
@@ -119,8 +164,14 @@ bool sut_create(sut_task_f sut_task) {
 
 	makecontext(&(thread_descriptor->thread_context), sut_task, 1, thread_descriptor);
 
+	printf("Inserting new function to be executed in task queue.\n");
 	struct queue_entry *task_thread_id = queue_new_node(&thread_descriptor);
 	queue_insert_tail(&task_queue, task_thread_id);
+
+	if (thread_count == 0) {
+		printf("first task to be queued so should yield to the task.");
+		yield = 1;
+	}
 
 	thread_count++;
 
@@ -129,6 +180,8 @@ bool sut_create(sut_task_f sut_task) {
 
 /*Yield is occuring directly from the task at the top of the queue.*/
 void sut_yield() {
+	// >> send a pthread_kill signal s
+
 	// pop task queue to get next thread, to be queued at the tail
 	struct queue_entry *current_thread_ptr = queue_pop_head(&task_queue);
 	// take a look at which thread id is next in line
@@ -136,7 +189,8 @@ void sut_yield() {
 
 	// swap contexts between the two tasks
 	// TODO: make sure the thread context are properly referenced
-	swapcontext(&(thread_array[(*(int*)current_thread_ptr->data)].thread_context), &(thread_array[(*(int*)next_thread_ptr->data)].thread_context));
+	swapcontext(&((*(threadDescriptor*)current_thread_ptr->data).thread_context),
+		&((*(threadDescriptor*)next_thread_ptr->data).thread_context));
 
 	// put back in queue both tasks - current going to tail
 	queue_insert_tail(&task_queue, current_thread_ptr);
@@ -154,14 +208,13 @@ void sut_exit() {
 	// check if there is any next tasks following the current task in the queue
 	if (next_thread_ptr) {
 		// switch to another task
-		swapcontext(&(thread_array[(*(int*)current_thread_ptr->data)].thread_context), &(thread_array[(*(int*)next_thread_ptr->data)].thread_context));
+		swapcontext(&((*(threadDescriptor*)current_thread_ptr->data).thread_context),
+			&((*(threadDescriptor*)next_thread_ptr->data).thread_context));
 	} else {
 		// no mo tasks, switch back to parent thread
-		swapcontext(&(thread_array[(*(int*)current_thread_ptr->data)].thread_context), &parent);
+		swapcontext(&((*(threadDescriptor*)current_thread_ptr->data).thread_context),
+			&parent);
 	}
-
-	// TODO: clear position in array
-
 
 	// add freed thread id back in allocatable thread id queue
 	// NOTE: this works well for 32 thread but would not be efficient at

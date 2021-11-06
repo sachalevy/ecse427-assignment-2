@@ -20,13 +20,14 @@ void hello2() {
 }
 
 int main() {
-  sut_init();
-  printf("heya");
-  //bool t1 = sut_create(hello1);
-  /*if (t1 == false)
+  bool was_init = sut_init();
+  printf("Successfully initiated sut (%d)\n", was_init);
+  bool t1 = sut_create(hello1);
+  if (t1 == false)
     printf("Error: sut_create(hello1) failed\n");
   bool t2 = sut_create(hello2);
   if (t2 == false)
     printf("Error: sut_create(hello2) failed\n");
-  sut_shutdown();*/
+  printf("hey exiting now\n");
+  sut_shutdown();
 }

@@ -11,9 +11,9 @@ void testthread(threaddesc *arg)
                 sleep(1);
 
         }
- 
+
 }
- 
+
 
 void testthread_other(threaddesc *arg)
 {
@@ -22,8 +22,8 @@ void testthread_other(threaddesc *arg)
                 printf("Hello from Other thread %d \n", getYAUThreadid(arg));
                 sleep(1);
         }
-} 
- 
+}
+
 
 
 int main()

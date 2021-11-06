@@ -7,8 +7,8 @@
 #include <ucontext.h>
 #include <unistd.h>
 
-#define MAX_THREADS 32
-#define THREAD_STACK_SIZE 1024 * 64
+#define MAX_THREADS             32
+#define THREAD_STACK_SIZE       1024*64
 
 typedef void (*sut_task_f)();
 
@@ -20,12 +20,12 @@ typedef struct __threadDescriptor {
 } threadDescriptor;
 
 extern threadDescriptor thread_array[MAX_THREADS];
-extern int thread_count, current_thread;
+extern int thread_count, current_thread, current_thread_id;
 extern ucontext_t parent;
 
 extern struct queue task_queue, io_queue;
 
-void sut_init();
+bool sut_init();
 bool sut_create(sut_task_f fn);
 void sut_yield();
 void sut_exit();
