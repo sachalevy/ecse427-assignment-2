@@ -28,6 +28,5 @@ int main() {
   bool t2 = sut_create(hello2);
   if (t2 == false)
     printf("Error: sut_create(hello2) failed\n");
-  printf("hey exiting now\n");
   sut_shutdown();
 }

@@ -75,7 +75,7 @@ void handle_timerexpiry()
 	curthread = nxtthread;
 	// swap the contexts between the the current thrad, and the next thread
 	swapcontext(&(threadarr[curthreadsave].threadcontext),
-		    &(threadarr[nxtthread].threadcontext));
+		&(threadarr[nxtthread].threadcontext));
 	// does swap automatically save the thread's context? is that not necessary because
 	// they have different stack blocks allocated?
 }
