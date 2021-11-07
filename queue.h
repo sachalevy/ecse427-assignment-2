@@ -8,7 +8,6 @@
 
 struct queue_entry {
     void *data;
-    int thread_id;
     STAILQ_ENTRY(queue_entry) entries;
 };
 
