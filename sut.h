@@ -35,6 +35,4 @@ void sut_close(int fd);
 char *sut_read(int fd, char *buf, int size);
 void sut_shutdown();
 
-int get_thread_id(threadDescriptor *thread_descriptor);
-
 #endif
