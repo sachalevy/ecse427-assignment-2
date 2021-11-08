@@ -28,13 +28,10 @@ void hello3() {
 void hello1() {
   int i, fd;
   char write_sbuf[128];
-  printf("running open\n");
   fd = sut_open("./test5.txt");
-  printf("opened file %d\n", fd);
   if (fd < 0)
     printf("Error: sut_open() failed\n");
   else {
-    printf("helllooss\n");
     for (i = 0; i < 5; i++) {
       sprintf(write_sbuf, "Hello world!, message from SUT-One i = %d \n", i);
       sut_write(fd, write_sbuf, strlen(write_sbuf));
@@ -42,11 +39,12 @@ void hello1() {
     }
     sut_close(fd);
     printf("closed %d\n", fd);
-    //sut_create(hello3);
+    sut_create(hello3);
   }
 
+  printf("now exiting\n");
+
   sut_exit();
-  printf("came back to returned?\n");
 }
 
 void hello2() {
