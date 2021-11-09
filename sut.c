@@ -23,6 +23,8 @@ pthread_mutex_t thid_mutex, task_mutex, io_mutex, file_mutex, shutdown_mutex;
 bool do_shutdown;
 
 int find_ctx_idx() {
+  /*Find ucontext_ id for task_parent array.*/
+
   pthread_t current_thid = pthread_self();
   if (C_EXECS_COUNT == 1) {
     return 0;
