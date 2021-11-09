@@ -6,10 +6,7 @@ void hello3() {
   int i, fd;
   int buf_size = 2048;
   char read_sbuf[buf_size];
-  printf("striving to open test5\n");
   fd = sut_open("./test5.txt");
-
-  printf("opened file %d\n", fd);
   sut_yield();
   if (fd < 0)
     printf("Error: sut_open() failed in hello3()\n");
@@ -29,7 +26,6 @@ void hello1() {
   int i, fd;
   char write_sbuf[128];
   fd = sut_open("./test5.txt");
-  printf("did open %d\n", fd);
   if (fd < 0)
     printf("Error: sut_open() failed\n");
   else {
@@ -39,11 +35,9 @@ void hello1() {
       sut_yield();
     }
     sut_close(fd);
-    //sut_create(hello3);
+    sut_create(hello3);
   }
-
-  printf("now exiting\n");
-
+  
   sut_exit();
 }
 
