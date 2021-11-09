@@ -7,6 +7,7 @@
 #include <ucontext.h>
 #include <unistd.h>
 
+#define C_EXECS_COUNT           2
 #define MAX_THREADS             32
 #define THREAD_STACK_SIZE       1024*64
 
