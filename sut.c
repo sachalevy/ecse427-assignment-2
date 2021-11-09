@@ -192,7 +192,7 @@ void *task_executor(void *arg) {
       swapcontext(&task_parent[ctx_idx],
                   &(thread_array[*(int *)task_ptr->data].thread_context));
     } else {
-      nanosleep((const struct timespec[]){{0, 500000000L}}, NULL);
+      nanosleep((const struct timespec[]){{0, 100000L}}, NULL);
     }
 
     do_break = check_shutdown();
@@ -216,7 +216,7 @@ void *io_executor(void *arg) {
       swapcontext(&io_parent,
                   &(thread_array[*(int *)io_ptr->data].thread_context));
     } else {
-      nanosleep((const struct timespec[]){{0, 500000000L}}, NULL);
+      nanosleep((const struct timespec[]){{0, 100000L}}, NULL);
     }
 
     do_break = check_shutdown();
